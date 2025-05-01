@@ -1,0 +1,210 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>PDF para Audiobook</title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      background: linear-gradient(to right, #00b4db, #0083b0);
+      color: white;
+      text-align: center;
+      padding: 20px;
+    }
+
+    .container {
+      background: rgba(0, 0, 0, 0.2);
+      border-radius: 15px;
+      padding: 20px;
+      max-width: 600px;
+      margin: auto;
+    }
+
+    input, select, button, textarea {
+      margin: 10px 0;
+      padding: 10px;
+      width: 100%;
+      border-radius: 10px;
+      border: none;
+      font-size: 16px;
+    }
+
+    button {
+      background-color: #ffffff;
+      color: #0083b0;
+      font-weight: bold;
+      cursor: pointer;
+      transition: background 0.3s;
+    }
+
+    button:hover {
+      background-color: #f0f0f0;
+    }
+
+    textarea {
+      height: 200px;
+      resize: vertical;
+    }
+
+    label {
+      font-weight: bold;
+      display: block;
+      margin-top: 15px;
+      text-align: left;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>PDF para Audiobook 📖🔊</h1>
+    <input type="file" id="fileInput" accept="application/pdf" />
+
+    <label for="langSelect">Idioma:</label>
+    <select id="langSelect">
+      <option value="pt-BR">Português (Brasil)</option>
+      <option value="es-ES">Espanhol</option>
+    </select>
+
+    <label for="voiceSelect">Voz:</label>
+    <select id="voiceSelect">
+      <option>Carregando vozes...</option>
+    </select>
+
+    <label for="rateSelect">Velocidade:</label>
+    <select id="rateSelect">
+      <option value="0.7">Lento</option>
+      <option value="1" selected>Normal</option>
+      <option value="1.5">Rápido</option>
+    </select>
+
+    <button onclick="falarTexto()">▶️ Ouvir</button>
+    <button onclick="togglePausa()" id="pauseBtn" disabled>⏸️ Pausar</button>
+    <button onclick="pararFala()">⏹️ Parar</button>
+    <textarea id="outputText" placeholder="O texto extraído do PDF aparecerá aqui..."></textarea>
+  </div>
+
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.4.120/pdf.min.js"></script>
+  <script>
+    const synth = window.speechSynthesis;
+    let voices = [];
+    let utterance;
+    let isPaused = false;
+
+    function carregarVozes() {
+      voices = synth.getVoices();
+      const lang = document.getElementById("langSelect").value;
+      const voiceSelect = document.getElementById("voiceSelect");
+      voiceSelect.innerHTML = "";
+
+      const vozesFiltradas = voices.filter(v => v.lang.startsWith(lang));
+      if (vozesFiltradas.length === 0) {
+        const opt = document.createElement("option");
+        opt.textContent = "⚠️ Nenhuma voz disponível";
+        voiceSelect.appendChild(opt);
+        return;
+      }
+
+      vozesFiltradas.forEach(v => {
+        const opt = document.createElement("option");
+        opt.value = v.name;
+        opt.textContent = `${v.name} (${v.lang})`;
+        voiceSelect.appendChild(opt);
+      });
+    }
+
+    function inicializarVozes() {
+      setTimeout(() => {
+        carregarVozes();
+      }, 300);
+    }
+
+    if (typeof speechSynthesis !== "undefined") {
+      speechSynthesis.onvoiceschanged = () => {
+        carregarVozes();
+      };
+    }
+
+    document.getElementById("langSelect").addEventListener("change", () => {
+      carregarVozes();
+    });
+
+    function falarTexto() {
+      const texto = document.getElementById("outputText").value;
+      if (!texto) {
+        alert("Nenhum texto para ler.");
+        return;
+      }
+
+      synth.cancel();
+      utterance = new SpeechSynthesisUtterance(texto);
+      utterance.lang = document.getElementById("langSelect").value;
+      utterance.rate = parseFloat(document.getElementById("rateSelect").value);
+      const vozSelecionada = document.getElementById("voiceSelect").value;
+      utterance.voice = voices.find(v => v.name === vozSelecionada);
+
+      utterance.onend = () => {
+        document.getElementById("pauseBtn").disabled = true;
+        document.getElementById("pauseBtn").innerText = "⏸️ Pausar";
+        isPaused = false;
+      };
+
+      synth.speak(utterance);
+      document.getElementById("pauseBtn").disabled = false;
+      document.getElementById("pauseBtn").innerText = "⏸️ Pausar";
+      isPaused = false;
+    }
+
+    function togglePausa() {
+      if (synth.speaking) {
+        if (!isPaused) {
+          synth.pause();
+          isPaused = true;
+          document.getElementById("pauseBtn").innerText = "▶️ Retomar";
+        } else {
+          synth.resume();
+          isPaused = false;
+          document.getElementById("pauseBtn").innerText = "⏸️ Pausar";
+        }
+      }
+    }
+
+    function pararFala() {
+      synth.cancel();
+      document.getElementById("pauseBtn").disabled = true;
+      document.getElementById("pauseBtn").innerText = "⏸️ Pausar";
+      isPaused = false;
+    }
+
+    async function extrairTextoPDF(pdfData) {
+      const pdf = await pdfjsLib.getDocument({ data: pdfData }).promise;
+      let textoCompleto = "";
+
+      for (let i = 1; i <= pdf.numPages; i++) {
+        const page = await pdf.getPage(i);
+        const content = await page.getTextContent();
+        const textoPagina = content.items.map(item => item.str).join(" ");
+        textoCompleto += textoPagina + "\n\n";
+      }
+
+      document.getElementById("outputText").value = textoCompleto;
+    }
+
+    document.getElementById("fileInput").addEventListener("change", e => {
+      const file = e.target.files[0];
+      if (file && file.type === "application/pdf") {
+        const reader = new FileReader();
+        reader.onload = function () {
+          extrairTextoPDF(new Uint8Array(reader.result));
+        };
+        reader.readAsArrayBuffer(file);
+      } else {
+        alert("Por favor, selecione um arquivo PDF válido.");
+      }
+    });
+
+    // Inicializar vozes no carregamento
+    window.addEventListener("load", inicializarVozes);
+  </script>
+</body>
+</html>
